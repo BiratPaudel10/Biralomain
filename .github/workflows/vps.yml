@@ -3,7 +3,7 @@ name: BiraloVPS 24/7 Auto Backup
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 */6 * * *'  # Runs every 6 hours automatically
 
 jobs:
   tmate-session:
@@ -18,19 +18,25 @@ jobs:
         sudo apt update
         sudo apt install -y tmate curl tar
 
-    - name: Restore backup, start tmate, and auto backup
+    - name: Restore backup
       run: |
         chmod +x ./backup-restore.sh
         ./backup-restore.sh restore_backup || echo "No backup found."
 
-        # Start tmate in background, logs saved
+    - name: Start tmate session and keep alive for 6 hours
+      run: |
+        # Start tmate session in background, output logs
         tmate -F | tee session.log &
 
-        # Wait a bit for tmate to start
-        sleep 30
+        # Wait for tmate session to fully initialize
+        sleep 15
 
-        # Backup current data before workflow ends
+        # Show the session connection links in logs
+        grep -E 'ssh|https://tmate.io' session.log
+
+        # Keep workflow alive for 6 hours so session stays alive
+        sleep 21600
+
+    - name: Backup data before shutdown
+      run: |
         ./backup-restore.sh backup_and_upload || echo "Backup failed."
-
-    - name: Show session links
-      run: grep -E 'ssh|https://tmate.io' session.log
