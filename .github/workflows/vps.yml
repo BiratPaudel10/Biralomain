@@ -3,13 +3,16 @@ name: BiraloVPS 24/7 Auto Backup
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *'  # Auto restart every 6 hours
+    - cron: '0 */6 * * *'
 
 jobs:
   tmate-session:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
     - name: Install dependencies
       run: |
         sudo apt update
