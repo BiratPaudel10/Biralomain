@@ -1,18 +1,27 @@
-name: BiraloVPS 24/7
+name: Biralo Cloud VPS
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *'  # Every 6 hours auto restart
+    - cron: '0 */6 * * *'  # Restart every 6 hours
 
 jobs:
-  run-vps:
+  vps:
     runs-on: ubuntu-latest
+
     steps:
-    - name: Setup and start Cloudflared VPS
+    - name: Setup cloudflared + install server
       run: |
+        # Install basic tools
         sudo apt update
-        sudo apt install -y curl unzip
-        curl -LO https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
-        chmod +x cloudflared-linux-amd64
-        ./cloudflared-linux-amd64 tunnel --url http://localhost:8080
+        sudo apt install -y curl unzip python3
+
+        # Start simple HTTP server on port 8080
+        nohup python3 -m http.server 8080 &
+
+        # Download & start Cloudflare tunnel
+        curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
+        chmod +x cloudflared
+
+        # Start tunnel
+        ./cloudflared tunnel --url http://localhost:8080
