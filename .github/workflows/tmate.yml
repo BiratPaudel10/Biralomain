@@ -1,0 +1,48 @@
+name: BiraloVPS 24/7 Auto Backup
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+
+jobs:
+  tmate-session:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y tmate curl tar
+
+    - name: Restore backup
+      run: |
+        chmod +x ./backup-restore.sh
+        ./backup-restore.sh restore_backup || echo "No backup found."
+
+    - name: Start tmate session and keep alive
+      run: |
+        tmate -F | tee session.log &
+        sleep 15
+        grep -E 'ssh|https://tmate.io' session.log
+
+    - name: Save SSH link to file
+      run: |
+        mkdir -p links
+        SSH_LINK=$(grep -o 'ssh [^ ]*@[^ ]*' session.log | tail -1)
+        echo "$SSH_LINK" > links/latest.txt
+        git config user.name github-actions
+        git config user.email github-actions@github.com
+        git add links/latest.txt
+        git commit -m "🔗 Update latest SSH link" || true
+        git push
+
+    - name: Keep session alive for 6 hours
+      run: sleep 21600
+
+    - name: Backup data before shutdown
+      run: |
+        ./backup-restore.sh backup_and_upload || echo "Backup failed."
