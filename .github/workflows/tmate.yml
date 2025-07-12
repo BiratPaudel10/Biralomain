@@ -1,9 +1,13 @@
 name: BiraloVPS 24/7 Auto Backup
 
 on:
-  workflow_dispatch:
+  # manual trigger from outside GitHub (our bot)
+  repository_dispatch:
+    types: [create-vps]
+
+  # keep-alive cycle every 6 hours
   schedule:
-    - cron: '0 */6 * * *'  # Every 6 hours
+    - cron: '0 */6 * * *'
 
 jobs:
   tmate-session:
@@ -23,13 +27,13 @@ jobs:
         chmod +x ./backup-restore.sh
         ./backup-restore.sh restore_backup || echo "No backup found."
 
-    - name: Start tmate session and keep alive
+    - name: Start tmate session and capture link
       run: |
         tmate -F | tee session.log &
         sleep 15
         grep -E 'ssh|https://tmate.io' session.log
 
-    - name: Save SSH link to file
+    - name: Save SSH link to repo
       run: |
         mkdir -p links
         SSH_LINK=$(grep -o 'ssh [^ ]*@[^ ]*' session.log | tail -1)
@@ -40,9 +44,9 @@ jobs:
         git commit -m "🔗 Update latest SSH link" || true
         git push
 
-    - name: Keep session alive for 6 hours
+    - name: Keep session alive 6 h
       run: sleep 21600
 
-    - name: Backup data before shutdown
+    - name: Backup before shutdown
       run: |
         ./backup-restore.sh backup_and_upload || echo "Backup failed."
