@@ -1,31 +1,33 @@
-name: BiraloCloud Web Terminal
+name: BiraloVPS 24/7 Auto Backup
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 */6 * * *'  # Auto restart every 6 hours
 
 jobs:
-  vps:
+  tmate-session:
     runs-on: ubuntu-latest
+
     steps:
-    - name: Install ttyd and cloudflared
+    - name: Install dependencies
       run: |
         sudo apt update
-        sudo apt install -y cmake g++ libjson-c-dev libwebsockets-dev git curl unzip
+        sudo apt install -y tmate curl tar
 
-        git clone https://github.com/tsl0922/ttyd.git
-        cd ttyd
-        mkdir build && cd build
-        cmake ..
-        make
-        sudo make install
-        cd ~
+    - name: Restore backup, start tmate, and auto backup
+      run: |
+        chmod +x ./backup-restore.sh
+        ./backup-restore.sh restore_backup || echo "No backup found."
 
-        # Start ttyd (web terminal) on port 8080
-        nohup ttyd bash &
+        # Start tmate in background, logs saved
+        tmate -F | tee session.log &
 
-        # Download & run Cloudflared
-        curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o cloudflared
-        chmod +x cloudflared
-        ./cloudflared tunnel --url http://localhost:8080
+        # Wait a bit for tmate to start
+        sleep 30
+
+        # Backup current data before workflow ends
+        ./backup-restore.sh backup_and_upload || echo "Backup failed."
+
+    - name: Show session links
+      run: grep -E 'ssh|https://tmate.io' session.log
