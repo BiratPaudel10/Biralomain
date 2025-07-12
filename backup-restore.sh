@@ -18,7 +18,7 @@ function restore_backup() {
 
 function backup_and_upload() {
   echo "💾 Creating backup and uploading..."
-  # Adjust the folders you want to backup here
+  # Change these folders to whatever you want backed up
   tar czf $BACKUP_NAME ./data ./scripts ./configs 2>/dev/null || {
     echo "Nothing to backup or folders do not exist."
     return 1
@@ -28,10 +28,11 @@ function backup_and_upload() {
   echo $UPLOAD_LINK > last_backup_url.txt
 }
 
-# Restore on start
-restore_backup || true
-
-# Run your VPS session here or from GitHub Action workflow
-
-# Before exit: backup (you can call this explicitly when you want)
-backup_and_upload || true
+# Accept argument: restore_backup or backup_and_upload
+if [ "$1" == "restore_backup" ]; then
+  restore_backup
+elif [ "$1" == "backup_and_upload" ]; then
+  backup_and_upload
+else
+  echo "Usage: $0 [restore_backup|backup_and_upload]"
+fi
