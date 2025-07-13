@@ -38,3 +38,6 @@ jobs:
         git add links/
         git commit -m "Add SSH for ${{ github.event.client_payload.vps_name }}"
         git push
+
+    - name: Keep session alive
+      run: sleep 21600  # ⏱️ Keep it alive for 6 hours
