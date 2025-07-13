@@ -1,64 +1,44 @@
-name: create-vps
+name: Create VPS
 
 on:
   repository_dispatch:
     types: [create-vps]
 
 jobs:
-  build:
+  start-vps:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 360
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v3
+      - name: ⬇️ Checkout
+        uses: actions/checkout@v3
 
-    - name: Set up variables
-      id: vars
-      run: |
-        echo "VPS_NAME=${{ github.event.client_payload.vps_name }}" >> $GITHUB_ENV
-        BACKUP_FLAG=${{ github.event.client_payload.backup || 'false' }}
-        echo "BACKUP_FLAG=$BACKUP_FLAG" >> $GITHUB_ENV
+      - name: 🔁 Set up tmate
+        uses: mxschmitt/action-tmate@v3
 
-    - name: Backup old data if requested
-      if: env.BACKUP_FLAG == 'true'
-      run: |
-        echo "Backing up old VPS data for $VPS_NAME..."
-        # Example backup logic, adapt as needed:
-        if [ -d "./data/$VPS_NAME" ]; then
-          tar czf "./backup/${VPS_NAME}_backup_$(date +%s).tar.gz" "./data/$VPS_NAME"
-          echo "Backup created."
-        else
-          echo "No data folder to backup."
-        fi
+      - name: 📁 Create directories
+        run: mkdir -p links .backup
 
-    - name: Restore backup if requested
-      if: env.BACKUP_FLAG == 'true'
-      run: |
-        echo "Restoring backup for $VPS_NAME..."
-        # Example restore logic, adapt as needed:
-        latest_backup=$(ls -t ./backup/${VPS_NAME}_backup_*.tar.gz 2>/dev/null | head -n1 || echo "")
-        if [ -f "$latest_backup" ]; then
-          mkdir -p "./data/$VPS_NAME"
-          tar xzf "$latest_backup" -C "./data"
-          echo "Backup restored."
-        else
-          echo "No backup found."
-        fi
+      - name: 💾 Restore backup if exists
+        run: |
+          if [ -f ".backup/${{ github.event.client_payload.vps_name }}.zip" ]; then
+            unzip ".backup/${{ github.event.client_payload.vps_name }}.zip" -d .
+          fi
 
-    - name: Start tmate session and save SSH link
-      run: |
-        echo "Starting tmate session..."
-        mkdir -p ./links
+      - name: ⚙️ Start tmate session and wait for it
+        run: |
+          echo "🔑 Starting tmate session..."
+          tmate -S /tmp/tmate.sock new-session -d
+          tmate -S /tmp/tmate.sock wait tmate-ready
+          SSH=$(tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}')
+          echo "$SSH" > "links/${{ github.event.client_payload.vps_name }}.txt"
+          echo "SSH session ready: $SSH"
+          sleep 50  # Give the user time to connect
 
-        # Start tmate, get SSH connection string
-        tmux new-session -d -s tmate-session "tmate -S /tmp/tmate.sock new-session -d; sleep 1; tmate -S /tmp/tmate.sock wait tmate-ready; tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}' > ./links/${VPS_NAME}.txt"
+      - name: 📦 Zip current state as backup
+        run: |
+          zip -r ".backup/${{ github.event.client_payload.vps_name }}.zip" . -x ".git/*" ".github/*" ".backup/*"
 
-        cat ./links/${VPS_NAME}.txt
-
-    - name: Commit SSH link to repo
-      run: |
-        git config user.name "github-actions"
-        git config user.email "actions@github.com"
-        git add "./links/${VPS_NAME}.txt"
-        git commit -m "Update SSH link for ${VPS_NAME}" || echo "No changes to commit"
-        git push
+      - name: 📤 Push SSH and backup to repo
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "🔁 Updated SSH + backup for ${{ github.event.client_payload.vps_name }}"
