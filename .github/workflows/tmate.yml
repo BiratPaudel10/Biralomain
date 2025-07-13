@@ -1,12 +1,14 @@
 name: BiraloVPS 24/7 Auto Backup
 
 on:
-  workflow_dispatch:
+  repository_dispatch:
+    types: [create-vps]  # <-- Enables Discord bot to trigger this workflow
+  workflow_dispatch:     # Optional: allows you to trigger manually from GitHub
   schedule:
-    - cron: '0 */6 * * *'  # Runs every 6 hours
+    - cron: '0 */6 * * *'  # Every 6 hours
 
 env:
-  GIT_TOKEN: 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  # <-- Add your PAT token here
+  GIT_TOKEN: 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  # Replace with your actual PAT
 
 jobs:
   tmate-session:
@@ -30,7 +32,7 @@ jobs:
       run: |
         tmate -F | tee session.log &
         sleep 15
-        grep -E 'ssh|https://tmate.io' session.log
+        grep -E 'ssh|https://tmate.io' session.log || echo "❌ No SSH link found."
 
     - name: Save SSH link to file
       run: |
