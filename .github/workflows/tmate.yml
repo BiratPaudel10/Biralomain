@@ -7,7 +7,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 360  # 6 hours
 
     steps:
     - name: Checkout
@@ -34,3 +34,8 @@ jobs:
         git add links/
         git commit -m "Add SSH for ${{ github.event.client_payload.vps_name }}"
         git push
+
+    - name: Keep VPS running for 6 hours
+      run: |
+        echo "✅ VPS is running. Sleeping for 6 hours..."
+        sleep 21600
