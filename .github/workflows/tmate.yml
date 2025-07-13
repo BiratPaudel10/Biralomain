@@ -1,9 +1,12 @@
 name: BiraloVPS 24/7 Auto Backup
 
 on:
-  workflow_dispatch:            # ✅ Needed for bot-triggering
+  workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *'       # Every 6 hours
+    - cron: '0 */6 * * *'  # Runs every 6 hours
+
+env:
+  GIT_TOKEN: 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  # <-- Add your PAT token here
 
 jobs:
   tmate-session:
@@ -16,7 +19,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt update
-        sudo apt install -y tmate curl tar
+        sudo apt install -y tmate curl tar git
 
     - name: Restore backup
       run: |
@@ -38,9 +41,9 @@ jobs:
         git config user.email github-actions@github.com
         git add links/latest.txt
         git commit -m "🔗 Update latest SSH link"
-        git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} HEAD:main || echo "Push failed"
+        git push https://${GIT_TOKEN}@github.com/${{ github.repository }} HEAD:main
 
-    - name: Keep session alive
+    - name: Keep session alive for 6 hours
       run: sleep 21600
 
     - name: Backup data before shutdown
