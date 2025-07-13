@@ -1,77 +1,64 @@
-name: Tmate VPS
+name: create-vps
+
 on:
   repository_dispatch:
     types: [create-vps]
 
 jobs:
-  setup:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
-
-    env:
-      VPS_NAME: ${{ github.event.client_payload.vps_name }}
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+    - name: Checkout repo
+      uses: actions/checkout@v3
 
-      - name: Prepare folders
-        run: |
-          mkdir -p workspace
-          mkdir -p backups
-          mkdir -p links
+    - name: Set up variables
+      id: vars
+      run: |
+        echo "VPS_NAME=${{ github.event.client_payload.vps_name }}" >> $GITHUB_ENV
+        BACKUP_FLAG=${{ github.event.client_payload.backup || 'false' }}
+        echo "BACKUP_FLAG=$BACKUP_FLAG" >> $GITHUB_ENV
 
-      - name: Auto-Delete Old Backup and Create New One
-        if: ${{ github.event.client_payload.backup }}
-        run: |
-          echo "Checking for old backup..."
-          if [ -f "backups/${VPS_NAME}.tar.gz" ]; then
-            echo "Deleting old backup: backups/${VPS_NAME}.tar.gz"
-            rm "backups/${VPS_NAME}.tar.gz"
-          fi
+    - name: Backup old data if requested
+      if: env.BACKUP_FLAG == 'true'
+      run: |
+        echo "Backing up old VPS data for $VPS_NAME..."
+        # Example backup logic, adapt as needed:
+        if [ -d "./data/$VPS_NAME" ]; then
+          tar czf "./backup/${VPS_NAME}_backup_$(date +%s).tar.gz" "./data/$VPS_NAME"
+          echo "Backup created."
+        else
+          echo "No data folder to backup."
+        fi
 
-          if [ -d "workspace/${VPS_NAME}" ]; then
-            echo "Creating new backup: backups/${VPS_NAME}.tar.gz"
-            tar -czf "backups/${VPS_NAME}.tar.gz" "workspace/${VPS_NAME}"
-          else
-            echo "No workspace/${VPS_NAME} to back up."
-          fi
+    - name: Restore backup if requested
+      if: env.BACKUP_FLAG == 'true'
+      run: |
+        echo "Restoring backup for $VPS_NAME..."
+        # Example restore logic, adapt as needed:
+        latest_backup=$(ls -t ./backup/${VPS_NAME}_backup_*.tar.gz 2>/dev/null | head -n1 || echo "")
+        if [ -f "$latest_backup" ]; then
+          mkdir -p "./data/$VPS_NAME"
+          tar xzf "$latest_backup" -C "./data"
+          echo "Backup restored."
+        else
+          echo "No backup found."
+        fi
 
-      - name: Restore Backup (if exists)
-        if: ${{ github.event.client_payload.backup }}
-        run: |
-          if [ -f "backups/${VPS_NAME}.tar.gz" ]; then
-            echo "Restoring from backup..."
-            mkdir -p "workspace"
-            tar -xzf "backups/${VPS_NAME}.tar.gz" -C "workspace"
-          else
-            echo "No backup file found."
-          fi
+    - name: Start tmate session and save SSH link
+      run: |
+        echo "Starting tmate session..."
+        mkdir -p ./links
 
-      - name: Install Tmate
-        run: |
-          sudo apt update
-          sudo apt install -y tmate
+        # Start tmate, get SSH connection string
+        tmux new-session -d -s tmate-session "tmate -S /tmp/tmate.sock new-session -d; sleep 1; tmate -S /tmp/tmate.sock wait tmate-ready; tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}' > ./links/${VPS_NAME}.txt"
 
-      - name: Start Tmate
-        run: |
-          tmate -S /tmp/tmate.sock new-session -d
-          tmate -S /tmp/tmate.sock wait tmate-ready
-          tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}' > ssh_link.txt
-          cat ssh_link.txt
+        cat ./links/${VPS_NAME}.txt
 
-      - name: Save SSH link to links/<vps>.txt
-        run: |
-          mkdir -p links
-          cp ssh_link.txt links/${VPS_NAME}.txt
-
-      - name: Commit SSH link
-        run: |
-          git config user.name github-actions
-          git config user.email github-actions@github.com
-          git add links/${VPS_NAME}.txt
-          git commit -m "Update SSH link for ${VPS_NAME}" || echo "No changes to commit"
-          git push
-
-      - name: Keep alive for 6 hours
-        run: sleep 21600
+    - name: Commit SSH link to repo
+      run: |
+        git config user.name "github-actions"
+        git config user.email "actions@github.com"
+        git add "./links/${VPS_NAME}.txt"
+        git commit -m "Update SSH link for ${VPS_NAME}" || echo "No changes to commit"
+        git push
