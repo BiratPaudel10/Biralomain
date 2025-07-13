@@ -1,49 +1,35 @@
 name: BiraloVPS 24/7 Auto Backup
 
 on:
-  repository_dispatch:
-    types: [create-vps]  # Triggered by your Discord bot
+  workflow_dispatch:            # ✅ Needed for bot-triggering
   schedule:
-    - cron: '0 */6 * * *'  # Optional: runs every 6 hours
+    - cron: '0 */6 * * *'       # Every 6 hours
 
 jobs:
   tmate-session:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
+    - name: Checkout repo
       uses: actions/checkout@v3
-
-    - name: Test network connectivity
-      run: |
-        echo "Testing connection to tmate.io..."
-        curl -I https://tmate.io || echo "⚠️ Unable to reach tmate.io"
-        nc -zv sfo2.tmate.io 22 || echo "⚠️ Port 22 blocked or unreachable"
 
     - name: Install dependencies
       run: |
         sudo apt update
-        sudo apt install -y tmate curl tar netcat-openbsd
+        sudo apt install -y tmate curl tar
 
-    - name: Restore backup (optional)
+    - name: Restore backup
       run: |
-        if [ -f "./backup-restore.sh" ]; then
-          chmod +x ./backup-restore.sh
-          ./backup-restore.sh restore_backup || echo "⚠️ No backup found"
-        else
-          echo "⚠️ backup-restore.sh not found — skipping restore"
-        fi
+        chmod +x ./backup-restore.sh
+        ./backup-restore.sh restore_backup || echo "No backup found."
 
-    - name: Start tmate session and log SSH link
+    - name: Start tmate session and keep alive
       run: |
         tmate -F | tee session.log &
-        sleep 30
-        grep -E 'ssh|https://tmate.io' session.log || echo "❌ No SSH link found"
+        sleep 15
+        grep -E 'ssh|https://tmate.io' session.log
 
-    - name: Show tmate session log (for debug)
-      run: cat session.log
-
-    - name: Save SSH link to repo
+    - name: Save SSH link to file
       run: |
         mkdir -p links
         SSH_LINK=$(grep -o 'ssh [^ ]*@[^ ]*' session.log | tail -1)
@@ -51,16 +37,12 @@ jobs:
         git config user.name github-actions
         git config user.email github-actions@github.com
         git add links/latest.txt
-        git commit -m "🔗 Update latest SSH link" || echo "Nothing to commit"
-        git push || echo "⚠️ Push failed — check repo permissions"
+        git commit -m "🔗 Update latest SSH link"
+        git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} HEAD:main || echo "Push failed"
 
-    - name: Keep session alive (6 hours)
+    - name: Keep session alive
       run: sleep 21600
 
-    - name: Backup before shutdown (optional)
+    - name: Backup data before shutdown
       run: |
-        if [ -f "./backup-restore.sh" ]; then
-          ./backup-restore.sh backup_and_upload || echo "⚠️ Backup failed"
-        else
-          echo "⚠️ backup-restore.sh not found — skipping backup"
-        fi
+        ./backup-restore.sh backup_and_upload || echo "Backup failed."
