@@ -1,20 +1,17 @@
 name: BiraloVPS 24/7 Auto Backup
 
 on:
-  # manual trigger from outside GitHub (our bot)
-  repository_dispatch:
-    types: [create-vps]
-
-  # keep-alive cycle every 6 hours
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 */6 * * *'  # Run every 6 hours
+  repository_dispatch:
+    types: [create-vps]     # Triggered by /create or /ressh from Discord
 
 jobs:
   tmate-session:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repo
+    - name: Checkout Repository
       uses: actions/checkout@v3
 
     - name: Install dependencies
@@ -22,16 +19,20 @@ jobs:
         sudo apt update
         sudo apt install -y tmate curl tar
 
-    - name: Restore backup
+    - name: Restore backup (optional)
       run: |
-        chmod +x ./backup-restore.sh
-        ./backup-restore.sh restore_backup || echo "No backup found."
+        if [ -f "./backup-restore.sh" ]; then
+          chmod +x ./backup-restore.sh
+          ./backup-restore.sh restore_backup || echo "⚠️ No backup found."
+        else
+          echo "⚠️ No backup script found. Skipping restore."
+        fi
 
-    - name: Start tmate session and capture link
+    - name: Start tmate session and log SSH link
       run: |
         tmate -F | tee session.log &
         sleep 15
-        grep -E 'ssh|https://tmate.io' session.log
+        grep -E 'ssh|https://tmate.io' session.log || echo "❌ No SSH link found."
 
     - name: Save SSH link to repo
       run: |
@@ -41,12 +42,16 @@ jobs:
         git config user.name github-actions
         git config user.email github-actions@github.com
         git add links/latest.txt
-        git commit -m "🔗 Update latest SSH link" || true
-        git push
+        git commit -m "🔗 Update latest SSH link"
+        git push || echo "❌ Failed to push SSH link."
 
-    - name: Keep session alive 6 h
+    - name: Keep session alive (6 hours)
       run: sleep 21600
 
-    - name: Backup before shutdown
+    - name: Backup before shutdown (optional)
       run: |
-        ./backup-restore.sh backup_and_upload || echo "Backup failed."
+        if [ -f "./backup-restore.sh" ]; then
+          ./backup-restore.sh backup_and_upload || echo "⚠️ Backup failed."
+        else
+          echo "⚠️ No backup script found. Skipping backup."
+        fi
