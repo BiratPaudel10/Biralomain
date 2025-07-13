@@ -1,23 +1,28 @@
 name: BiraloVPS 24/7 Auto Backup
 
 on:
-  schedule:
-    - cron: '0 */6 * * *'  # Run every 6 hours
   repository_dispatch:
-    types: [create-vps]     # Triggered by /create or /ressh from Discord
+    types: [create-vps]  # Triggered by Discord bot
+  schedule:
+    - cron: '0 */6 * * *'  # Optional: runs every 6 hours automatically
 
 jobs:
   tmate-session:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Repository
+    - name: Checkout repo
       uses: actions/checkout@v3
+
+    - name: Test network connectivity
+      run: |
+        curl -v https://tmate.io || echo "⚠️ Failed to reach tmate.io"
+        nc -zv sfo2.tmate.io 22 || echo "⚠️ Port 22 to tmate server blocked"
 
     - name: Install dependencies
       run: |
         sudo apt update
-        sudo apt install -y tmate curl tar
+        sudo apt install -y tmate curl tar netcat
 
     - name: Restore backup (optional)
       run: |
@@ -31,8 +36,11 @@ jobs:
     - name: Start tmate session and log SSH link
       run: |
         tmate -F | tee session.log &
-        sleep 15
+        sleep 30  # wait for tmate session to be ready
         grep -E 'ssh|https://tmate.io' session.log || echo "❌ No SSH link found."
+
+    - name: Debug tmate logs
+      run: cat session.log
 
     - name: Save SSH link to repo
       run: |
@@ -42,8 +50,8 @@ jobs:
         git config user.name github-actions
         git config user.email github-actions@github.com
         git add links/latest.txt
-        git commit -m "🔗 Update latest SSH link"
-        git push || echo "❌ Failed to push SSH link."
+        git commit -m "🔗 Update latest SSH link" || echo "Nothing to commit"
+        git push || echo "⚠️ Failed to push SSH link."
 
     - name: Keep session alive (6 hours)
       run: sleep 21600
