@@ -18,13 +18,17 @@ jobs:
         sudo apt update
         sudo apt install -y tmate
 
+    - name: Customize shell prompt
+      run: |
+        echo 'export PS1="BiraloVps# "' >> ~/.bashrc
+        echo 'cd ~' >> ~/.bashrc
+
     - name: Start tmate session
       run: |
         mkdir -p links
         tmate -S /tmp/tmate.sock new-session -d
         tmate -S /tmp/tmate.sock wait tmate-ready
         ssh_link=$(tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}')
-        echo "$ssh_link"
         echo "$ssh_link" > "links/${{ github.event.client_payload.vps_name }}.txt"
 
     - name: Commit SSH link to repo
@@ -34,8 +38,3 @@ jobs:
         git add links/
         git commit -m "Add SSH for ${{ github.event.client_payload.vps_name }}"
         git push
-
-    - name: Keep VPS running for 6 hours
-      run: |
-        echo "✅ VPS is running. Sleeping for 6 hours..."
-        sleep 21600
