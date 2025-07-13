@@ -1,43 +1,77 @@
 name: Tmate VPS
-
 on:
   repository_dispatch:
     types: [create-vps]
 
 jobs:
-  deploy:
+  setup:
     runs-on: ubuntu-latest
-    timeout-minutes: 360  # 6 hours
+    timeout-minutes: 360
+
+    env:
+      VPS_NAME: ${{ github.event.client_payload.vps_name }}
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v3
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-    - name: Install tmate
-      run: |
-        sudo apt update
-        sudo apt install -y tmate
+      - name: Prepare folders
+        run: |
+          mkdir -p workspace
+          mkdir -p backups
+          mkdir -p links
 
-    - name: Customize shell prompt
-      run: |
-        echo 'export PS1="BiraloVps# "' >> ~/.bashrc
-        echo 'cd ~' >> ~/.bashrc
+      - name: Auto-Delete Old Backup and Create New One
+        if: ${{ github.event.client_payload.backup }}
+        run: |
+          echo "Checking for old backup..."
+          if [ -f "backups/${VPS_NAME}.tar.gz" ]; then
+            echo "Deleting old backup: backups/${VPS_NAME}.tar.gz"
+            rm "backups/${VPS_NAME}.tar.gz"
+          fi
 
-    - name: Start tmate session
-      run: |
-        mkdir -p links
-        tmate -S /tmp/tmate.sock new-session -d
-        tmate -S /tmp/tmate.sock wait tmate-ready
-        ssh_link=$(tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}')
-        echo "$ssh_link" > "links/${{ github.event.client_payload.vps_name }}.txt"
+          if [ -d "workspace/${VPS_NAME}" ]; then
+            echo "Creating new backup: backups/${VPS_NAME}.tar.gz"
+            tar -czf "backups/${VPS_NAME}.tar.gz" "workspace/${VPS_NAME}"
+          else
+            echo "No workspace/${VPS_NAME} to back up."
+          fi
 
-    - name: Commit SSH link to repo
-      run: |
-        git config --global user.email "actions@github.com"
-        git config --global user.name "GitHub Actions"
-        git add links/
-        git commit -m "Add SSH for ${{ github.event.client_payload.vps_name }}"
-        git push
+      - name: Restore Backup (if exists)
+        if: ${{ github.event.client_payload.backup }}
+        run: |
+          if [ -f "backups/${VPS_NAME}.tar.gz" ]; then
+            echo "Restoring from backup..."
+            mkdir -p "workspace"
+            tar -xzf "backups/${VPS_NAME}.tar.gz" -C "workspace"
+          else
+            echo "No backup file found."
+          fi
 
-    - name: Keep session alive
-      run: sleep 21600  # ⏱️ Keep it alive for 6 hours
+      - name: Install Tmate
+        run: |
+          sudo apt update
+          sudo apt install -y tmate
+
+      - name: Start Tmate
+        run: |
+          tmate -S /tmp/tmate.sock new-session -d
+          tmate -S /tmp/tmate.sock wait tmate-ready
+          tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}' > ssh_link.txt
+          cat ssh_link.txt
+
+      - name: Save SSH link to links/<vps>.txt
+        run: |
+          mkdir -p links
+          cp ssh_link.txt links/${VPS_NAME}.txt
+
+      - name: Commit SSH link
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add links/${VPS_NAME}.txt
+          git commit -m "Update SSH link for ${VPS_NAME}" || echo "No changes to commit"
+          git push
+
+      - name: Keep alive for 6 hours
+        run: sleep 21600
