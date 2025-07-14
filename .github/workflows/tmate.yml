@@ -1,52 +1,63 @@
-name: VPS Runner
+name: Create VPS
 
 on:
   repository_dispatch:
     types: [create-vps]
 
 jobs:
-  run-vps:
+  start-vps:
     runs-on: ubuntu-latest
-    timeout-minutes: 4320 # Max allowed by GitHub: 72 hours
+    timeout-minutes: 360         # GitHub hard-limit (6 h)
+
+    env:
+      VPS_NAME: ${{ github.event.client_payload.vps_name }}
+
     steps:
+      - name: ⬇️  Checkout repo
+        uses: actions/checkout@v4
 
-    - name: Setup VPS name
-      run: |
-        echo "VPS_NAME=${{ github.event.client_payload.vps_name }}" >> $GITHUB_ENV
-        echo "BACKUP=${{ github.event.client_payload.backup }}" >> $GITHUB_ENV
+      - name: 📂 Ensure folders
+        run: mkdir -p links .backup
 
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      # ─────────── RESTORE ───────────
+      - name: ♻️  Restore previous backup
+        if: ${{ github.event.client_payload.backup == 'true' || github.event.client_payload.backup == true }}
+        run: |
+          if [ -f ".backup/${VPS_NAME}.zip" ]; then
+            echo "Found backup, restoring..."
+            unzip -qq ".backup/${VPS_NAME}.zip" -d .
+          else
+            echo "No backup for $VPS_NAME"
+          fi
 
-    - name: Backup old data (if any)
-      if: env.BACKUP == 'true'
-      run: |
-        echo "Backup enabled for $VPS_NAME (optional logic here)"
+      # Or call your custom script if you prefer
+      # - name: ♻️ Restore via script
+      #   run: bash backup-restore.sh restore "$VPS_NAME"
 
-    - name: Install Tmate
-      run: |
-        sudo apt update
-        sudo apt install -y tmate
-        mkdir -p links
+      # ─────────── START TMATE ───────────
+      - name: 🔑 Start tmate & wait ready
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
 
-    - name: Start tmate session
-      run: |
-        tmate -S vps_${VPS_NAME}.sock new-session -d
-        tmate -S vps_${VPS_NAME}.sock wait tmate-ready
-        TMATE_SSH=$(tmate -S vps_${VPS_NAME}.sock display -p '#{tmate_ssh}')
-        echo "$TMATE_SSH" > links/${VPS_NAME}.txt
-        echo "TMATE_SSH=$TMATE_SSH" >> $GITHUB_ENV
+      - name: 🔗 Save SSH link
+        run: |
+          SSH=$(tmate display -p '#{tmate_ssh}')
+          echo "$SSH"
+          echo "$SSH" > "links/${VPS_NAME}.txt"
 
-    - name: Commit SSH link to repo
-      uses: EndBug/add-and-commit@v9
-      with:
-        author_name: github-actions
-        author_email: github-actions@github.com
-        message: "🔐 Updated SSH for ${{ env.VPS_NAME }}"
-        add: "links/${{ env.VPS_NAME }}.txt"
+      # ─────────── BACKUP ───────────
+      - name: 💾 Zip workspace for backup
+        run: |
+          zip -r ".backup/${VPS_NAME}.zip" . -x ".git/*" ".github/*" ".backup/*" || true
 
-    - name: Output SSH link
-      run: echo "🔐 SSH link: $TMATE_SSH"
+      # Or call your custom script
+      # - name: 💾 Backup via script
+      #   run: bash backup-restore.sh backup "$VPS_NAME"
 
-    - name: Keep VPS alive for 72 hours
-      run: sleep 259200 # 72 hours in seconds
+      # ─────────── COMMIT CHANGES ───────────
+      - name: 📤 Commit SSH + backup
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "🔁 Update SSH + backup for ${VPS_NAME}"
+          branch: main
