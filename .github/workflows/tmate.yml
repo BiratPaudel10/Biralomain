@@ -7,57 +7,40 @@ on:
 jobs:
   start-vps:
     runs-on: ubuntu-latest
-    timeout-minutes: 360         # GitHub hard-limit (6 h)
-
-    env:
-      VPS_NAME: ${{ github.event.client_payload.vps_name }}
-
+    timeout-minutes: 360  # 6 hours max
     steps:
-      - name: ⬇️  Checkout repo
-        uses: actions/checkout@v4
+      - name: ⬇️ Checkout
+        uses: actions/checkout@v3
 
-      - name: 📂 Ensure folders
+      - name: 📁 Create dirs
         run: mkdir -p links .backup
 
-      # ─────────── RESTORE ───────────
-      - name: ♻️  Restore previous backup
-        if: ${{ github.event.client_payload.backup == 'true' || github.event.client_payload.backup == true }}
+      - name: 💾 Restore backup
         run: |
-          if [ -f ".backup/${VPS_NAME}.zip" ]; then
-            echo "Found backup, restoring..."
-            unzip -qq ".backup/${VPS_NAME}.zip" -d .
-          else
-            echo "No backup for $VPS_NAME"
+          name="${{ github.event.client_payload.vps_name }}"
+          if [ "${{ github.event.client_payload.backup }}" == "true" ]; then
+            echo "📦 Restoring backup..."
+            unzip ".backup/$name.zip" -d . || echo "⚠️ No backup to restore."
           fi
 
-      # Or call your custom script if you prefer
-      # - name: ♻️ Restore via script
-      #   run: bash backup-restore.sh restore "$VPS_NAME"
-
-      # ─────────── START TMATE ───────────
-      - name: 🔑 Start tmate & wait ready
-        uses: mxschmitt/action-tmate@v3
-        with:
-          limit-access-to-actor: true
-
-      - name: 🔗 Save SSH link
+      - name: 🔐 Start tmate session
         run: |
-          SSH=$(tmate display -p '#{tmate_ssh}')
-          echo "$SSH"
-          echo "$SSH" > "links/${VPS_NAME}.txt"
+          echo "⚙️ Launching tmate..."
+          sudo apt install -y tmate
+          tmate -S /tmp/tmate.sock new-session -d
+          tmate -S /tmp/tmate.sock wait tmate-ready
+          SSH=$(tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}')
+          echo "$SSH" > "links/${{ github.event.client_payload.vps_name }}.txt"
+          echo "✅ SSH Ready: $SSH"
+          sleep 60  # time to sync
 
-      # ─────────── BACKUP ───────────
-      - name: 💾 Zip workspace for backup
+      - name: 📦 Save backup
         run: |
-          zip -r ".backup/${VPS_NAME}.zip" . -x ".git/*" ".github/*" ".backup/*" || true
+          name="${{ github.event.client_payload.vps_name }}"
+          zip -r ".backup/$name.zip" . -x ".git/*" ".github/*" ".backup/*" || true
 
-      # Or call your custom script
-      # - name: 💾 Backup via script
-      #   run: bash backup-restore.sh backup "$VPS_NAME"
-
-      # ─────────── COMMIT CHANGES ───────────
-      - name: 📤 Commit SSH + backup
+      - name: 📤 Push
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "🔁 Update SSH + backup for ${VPS_NAME}"
-          branch: main
+          commit_message: "🔁 Updated SSH + backup for ${{ github.event.client_payload.vps_name }}"
+          file_pattern: 'links/*.txt .backup/*.zip'
