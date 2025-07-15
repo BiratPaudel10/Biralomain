@@ -8,6 +8,7 @@ jobs:
   start-vps:
     runs-on: ubuntu-latest
     timeout-minutes: 360  # 6 hours max
+
     steps:
       - name: ⬇️ Checkout
         uses: actions/checkout@v3
@@ -32,7 +33,7 @@ jobs:
           SSH=$(tmate -S /tmp/tmate.sock display -p '#{tmate_ssh}')
           echo "$SSH" > "links/${{ github.event.client_payload.vps_name }}.txt"
           echo "✅ SSH Ready: $SSH"
-          sleep 60  # time to sync
+          sleep 60  # give time for GitHub to sync
 
       - name: 📦 Save backup
         run: |
@@ -44,3 +45,8 @@ jobs:
         with:
           commit_message: "🔁 Updated SSH + backup for ${{ github.event.client_payload.vps_name }}"
           file_pattern: 'links/*.txt .backup/*.zip'
+
+      - name: ⏳ Keep session alive
+        run: |
+          echo "⏳ Keeping session alive for 6 hours..."
+          sleep $((360 * 60))
